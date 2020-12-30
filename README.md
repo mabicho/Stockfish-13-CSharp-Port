@@ -1,4 +1,4 @@
-# Stockfish-12-CSharp-Port
+Stockfish-12-CSharp-Port
 =====================
 
 Stockfish 12 chess engine port on C# language. 
