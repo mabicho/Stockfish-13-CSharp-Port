@@ -23,7 +23,7 @@ namespace StockFishPortApp_12
 {
 
 
-    class Types
+    public class Types
     {
         public const int MAX_MOVES = 256;
         public const int MAX_PLY = 246;
