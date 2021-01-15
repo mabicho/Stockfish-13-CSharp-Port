@@ -66,7 +66,8 @@ namespace StockFishPortApp_12._0
             KingSide, KingSide, KingSide ^ FileEBB
         };
 
-        public static ushort[] PopCnt16 = new ushort[1 << 16];
+        
+        //public static ushort[] PopCnt16 = new ushort[1 << 16]; Used for popcount. We use a .NET funtion
         public static ushort[][] SquareDistance = new ushort[SquareS.SQUARE_NB][];
         public static Bitboard[] SquareBB = new Bitboard[SquareS.SQUARE_NB];
         public static Bitboard[][] LineBB = new Bitboard[SquareS.SQUARE_NB][];
@@ -75,6 +76,9 @@ namespace StockFishPortApp_12._0
 
         public static Magic[] RookMagics = new Magic[SquareS.SQUARE_NB];
         public static Magic[] BishopMagics = new Magic[SquareS.SQUARE_NB];
+
+        public static Bitboard[] RookTable = new Bitboard[0x19000]; // To store rook attacks
+        public static Bitboard[] BishopTable = new Bitboard[0x1480]; // To store bishop attacks
 
 #if AGGR_INLINE
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -112,18 +116,18 @@ namespace StockFishPortApp_12._0
 #if AGGR_INLINE
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #endif
-        public static Bitboard BitboardOrEqSquare(ref Bitboard b, Square s)
-        {
-            return b |= square_bb(s);
-        }
+        //public static Bitboard BitboardOrEqSquare(Bitboard b, Square s)
+        //{
+        //    return b |= square_bb(s);
+        //}
 
 #if AGGR_INLINE
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #endif
-        public static Bitboard BitboardXorEqSquare(ref Bitboard b, Square s)
-        {
-            return b ^= square_bb(s);
-        }
+        //public static Bitboard BitboardXorEqSquare(Bitboard b, Square s)
+        //{
+        //    return b ^= square_bb(s);
+        //}
 
 #if AGGR_INLINE
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -470,6 +474,35 @@ namespace StockFishPortApp_12._0
             return c == ColorS.WHITE ? msb(b) : lsb(b); 
         }
 
+#if AGGR_INLINE
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#endif
+        public static Bitboard safe_destination(Square s, int step)
+        {
+            Square to = (Square)(s + step);
+            return Types.is_ok_square(to) && distanceSquare(s, to) <= 2 ? square_bb(to) : (Bitboard)(0L);
+        }
+
+#if AGGR_INLINE
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#endif
+        public static String pretty(Bitboard b)
+        {
+            StringBuilder sb = new StringBuilder("+---+---+---+---+---+---+---+---+"+ Types.newline);
+            
+            for (Rank r = RankS.RANK_8; r >= RankS.RANK_1; --r)
+            {
+                for (File f = FileS.FILE_A; f <= FileS.FILE_H; ++f)
+                {
+                    sb.Append(BitboardAndSquare(b, Types.make_square(f, r) ) != 0 ? "| X " : "|   ");
+                }
+                sb.Append("| " + (1 + r) + Types.newline + "+---+---+---+---+---+---+---+---+"+ Types.newline);                
+            }
+            sb.Append("  a   b   c   d   e   f   g   h"+ Types.newline);
+
+            return sb.ToString();
+        }
+
         public static void init()
         {
             for (Square s = SquareS.SQ_A1; s <= SquareS.SQ_H8; ++s)
@@ -477,13 +510,81 @@ namespace StockFishPortApp_12._0
 
             for (Bitboard b = 1; b < 256; ++b)
                 MS1BTable[b] = more_than_one(b) ? MS1BTable[b - 1] : lsb(b);
+
+            for (Square c = 0; c < SquareS.SQUARE_NB; c++)
+            {
+                SquareDistance[c] = new ushort[SquareS.SQUARE_NB];
+            }
+
+            for (PieceType pt = PieceTypeS.NO_PIECE_TYPE; pt < PieceTypeS.PIECE_TYPE_NB; pt++)
+                PseudoAttacks[pt] = new Bitboard[SquareS.SQUARE_NB];
+
+            for (Square s = SquareS.SQ_A1; s <= SquareS.SQ_H8; ++s)
+            {
+                SquareBB[s] = (1UL << s);
+                LineBB[s] = new Bitboard[SquareS.SQUARE_NB];
+            }
+
+            for (Square s1 = SquareS.SQ_A1; s1 <= SquareS.SQ_H8; ++s1)
+                for (Square s2 = SquareS.SQ_A1; s2 <= SquareS.SQ_H8; ++s2)
+                    SquareDistance[s1][s2] = (ushort)Math.Max(distanceFile(s1, s2), distanceRank(s1, s2));
+
+            init_magics(PieceTypeS.ROOK, RookTable, RookMagics);
+            init_magics(PieceTypeS.BISHOP, BishopTable, BishopMagics);
+
+            for (Square s1 = SquareS.SQ_A1; s1 <= SquareS.SQ_H8; ++s1)
+            {
+                PawnAttacks[ColorS.WHITE][s1] = pawn_attacks_bb(square_bb(s1), ColorS.WHITE);
+                PawnAttacks[ColorS.BLACK][s1] = pawn_attacks_bb(square_bb(s1), ColorS.BLACK);
+
+                foreach (int step in new int[] { -9, -8, -7, -1, 1, 7, 8, 9 })
+                    PseudoAttacks[PieceTypeS.KING][s1] |= safe_destination(s1, step);
+
+                foreach (int step in new int[] { -17, -15, -10, -6, 6, 10, 15, 17 })
+                    PseudoAttacks[PieceTypeS.KNIGHT][s1] |= safe_destination(s1, step);
+
+                PseudoAttacks[PieceTypeS.QUEEN][s1] = PseudoAttacks[PieceTypeS.BISHOP][s1] = attacks_bb(s1, (Bitboard)0, PieceTypeS.BISHOP);
+                PseudoAttacks[PieceTypeS.QUEEN][s1] |= PseudoAttacks[PieceTypeS.ROOK][s1] = attacks_bb(s1, (Bitboard)0, PieceTypeS.ROOK);
+
+                foreach (PieceType pt in new int[] { PieceTypeS.BISHOP, PieceTypeS.ROOK })
+                    for (Square s2 = SquareS.SQ_A1; s2 <= SquareS.SQ_H8; ++s2)
+                        if (BitboardAndSquare(PseudoAttacks[pt][s1], s2) != 0)
+                            LineBB[s1][s2] = (attacks_bb(pt, s1, (Bitboard)0) & attacks_bb(pt, s2, (Bitboard)0)) | SquareBB[s1] | SquareBB[s2];
+
+            }
+
         }
+
+        public static Bitboard sliding_attack(PieceType pt, Square sq, Bitboard occupied)
+        {
+
+            Bitboard attacks = 0;
+            Direction[] RookDirections= new Direction[4]{ DirectionS.NORTH, DirectionS.SOUTH, DirectionS.EAST, DirectionS.WEST };
+            Direction[] BishopDirections = new Direction[4] { DirectionS.NORTH_EAST, DirectionS.SOUTH_EAST, DirectionS.SOUTH_WEST, DirectionS.NORTH_WEST };
+
+            foreach (Direction d in (pt == PieceTypeS.ROOK ? RookDirections : BishopDirections))
+            {
+                Square s = sq;
+                while (safe_destination(s, d)!=0 && BitboardAndSquare(occupied, s)==0)
+                    attacks=BitboardOrSquare(attacks, (s += d));
+            }
+
+            return attacks;
+        }
+        public static void init_magics(PieceType pt, Bitboard[] table, Magic[] magics)
+        {
+
+        }
+    
+
+        
+
 
 #if AGGR_INLINE
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #endif
-        
 
-        
+
+
     }
 }

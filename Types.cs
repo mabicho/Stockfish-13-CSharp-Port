@@ -25,6 +25,7 @@ namespace StockFishPortApp_12
 
     public class Types
     {
+        public static string newline = System.Environment.NewLine;
         public const int MAX_MOVES = 256;
         public const int MAX_PLY = 246;
 
