@@ -572,8 +572,65 @@ namespace StockFishPortApp_12._0
             return attacks;
         }
         public static void init_magics(PieceType pt, Bitboard[] table, Magic[] magics)
-        {
+        {            
+            int[][] seeds= new int[2][]{
+                new int[RankS.RANK_NB]{ 8977, 44560, 54343, 38998, 5731, 95205, 104912, 17020},
+                new int[RankS.RANK_NB]{ 728, 10316, 55013, 32803, 12281, 15100, 16645, 255}
+            };
 
+            Bitboard[] occupancy = new Bitboard[4096], reference = new Bitboard[4096];
+            Bitboard edges, b;
+            int[] epoch = new int[4096];
+            int cnt = 0, size = 0;
+
+            for (Square s = SquareS.SQ_A1; s <= SquareS.SQ_H8; ++s)
+            {                
+                edges = ((Rank1BB | Rank8BB) & ~rank_bb_square(s)) | ((FileABB | FileHBB) & ~file_bb_square(s));
+                
+                Magic m = magics[s];
+                m.mask = sliding_attack(pt, s, 0) & ~edges;
+                m.shift = 64 - popcount(m.mask);
+                
+                m.attacks = (s == SquareS.SQ_A1) ? table : magics[s - 1 + size].attacks ;
+                
+                b = 0;
+                size = 0;
+                do
+                {
+                    occupancy[size] = b;
+                    reference[size] = sliding_attack(pt, s, b);
+
+                    //if (HasPext)
+                    //    m.attacks[pext(b, m.mask)] = reference[size];
+
+                    size++;
+                    b = (b - m.mask) & m.mask;
+                } while (b!=0);
+
+                //if (HasPext)
+                //    continue;
+
+                PRNG rng= new PRNG ((UInt64)seeds[1][Types.rank_of(s)]);
+                
+                for (int i = 0; i < size;)
+                {
+                    for (m.magic = 0; popcount((m.magic * m.mask) >> 56) < 6;)
+                        m.magic = rng.sparse_rand();
+                    
+                    for (++cnt, i = 0; i < size; ++i)
+                    {
+                        uint idx = m.index(occupancy[i]);
+
+                        if (epoch[idx] < cnt)
+                        {
+                            epoch[idx] = cnt;
+                            m.attacks[idx] = reference[i];
+                        }
+                        else if (m.attacks[idx] != reference[i])
+                            break;
+                    }
+                }
+            }
         }
     
 
